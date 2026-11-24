@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GT3 작화 스테이션</title>
+<meta name="description" content="도면 사진과 작화 JSON으로 GT Designer3 패널 화면을 미리 보고, 이 PC의 GT3 연결 서버로 자동 작화합니다.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* 배치: 왼쪽 = 순서대로 하는 일(연결 → 도면 → JSON → 만들기), 오른쪽 = GOT 화면 미리보기. 좁으면 한 줄로 */
+:root {
+  --bg: #eef1f4; --panel: #ffffff; --ink: #15202b; --muted: #5b6875; --line: #d5dce3; --soft: #f5f7f9;
+  --accent: #1f5fd1; --accent-ink: #ffffff; --ok: #1e8e5a; --warn: #a86a12; --bad: #c2382b;
+  --bezel: #2a3038; --screen: #0e1116;
+  --sans: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  --mono: "JetBrains Mono", Consolas, "D2Coding", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f141a; --panel: #161d25; --ink: #e6edf3; --muted: #93a1ae; --line: #26313c; --soft: #1b232c;
+  --accent: #5b8def; --accent-ink: #0b1220; --ok: #43b883; --warn: #e0a33a; --bad: #ef6b5e; --bezel: #39414b; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f141a; --panel: #161d25; --ink: #e6edf3; --muted: #93a1ae; --line: #26313c; --soft: #1b232c;
+  --accent: #5b8def; --accent-ink: #0b1220; --ok: #43b883; --warn: #e0a33a; --bad: #ef6b5e; --bezel: #39414b; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.55 var(--sans); }
+header { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between;
+  padding-block: 14px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.brand h1 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+.brand span { color: var(--muted); font: 12px var(--mono); }
+.pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); background: var(--soft); }
+.pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.pill.ok { color: var(--ok); } .pill.ok::before { background: var(--ok); }
+.pill.bad { color: var(--bad); } .pill.bad::before { background: var(--bad); }
+.pill.warn { color: var(--warn); } .pill.warn::before { background: var(--warn); }
+main { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); gap: 16px; padding-block: 16px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 1440px; margin: 0 auto; }
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.card h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+.step { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--ink); color: var(--panel); font: 600 12px var(--mono); }
+.hint { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
+label.f { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+input[type=text], input[type=password], textarea, select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); color: var(--ink); font: 13px var(--sans); }
+textarea { font: 12px/1.45 var(--mono); min-height: 110px; resize: vertical; }
+input:focus-visible, textarea:focus-visible, button:focus-visible, select:focus-visible, .drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+button { font: 600 13px var(--sans); padding: 8px 14px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.big { width: 100%; padding: 12px; font-size: 15px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.drop { border: 1.5px dashed var(--line); border-radius: 9px; padding: 16px; text-align: center; color: var(--muted); background: var(--soft); cursor: pointer; }
+.drop.over { border-color: var(--accent); color: var(--accent); }
+.photo { position: relative; margin-top: 10px; user-select: none; }
+.photo img { display: block; width: 100%; border-radius: 6px; border: 1px solid var(--line); }
+.photo .sel { position: absolute; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); pointer-events: none; }
+.photo .sel b { position: absolute; left: -2px; top: -20px; padding: 0 6px; background: var(--accent); color: var(--accent-ink); font: 600 11px/18px var(--mono); border-radius: 4px 4px 0 0; }
+.photo canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.list li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.list li span:last-child { color: var(--muted); text-align: right; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.tab { padding: 6px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--soft); font: 600 13px var(--sans); }
+.tab[aria-selected="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.tab small { font: 11px var(--mono); opacity: .7; margin-left: 4px; }
+.got { background: var(--bezel); border-radius: 14px; padding: 18px 18px 26px; position: relative; }
+.got::after { content: "GOT · 800 × 600"; position: absolute; right: 18px; bottom: 6px; font: 10px var(--mono); color: #9aa4af; letter-spacing: .08em; }
+.got svg { display: block; width: 100%; height: auto; background: var(--screen); border-radius: 3px; }
+.tools { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 10px 0 0; font-size: 12.5px; color: var(--muted); }
+.tools input[type=range] { width: 120px; vertical-align: middle; }
+.empty { display: grid; place-items: center; text-align: center; gap: 10px; aspect-ratio: 4 / 3; color: #9aa4af; background: var(--screen); border-radius: 3px; padding: 24px; }
+.empty b { color: #dbe2ea; font-size: 15px; }
+.box { border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-top: 12px; }
+.box.ok { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
+.box.bad { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+.box.warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.box ul { margin: 6px 0 0; padding-left: 18px; }
+.box li { color: var(--ink); }
+.subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 16px 0 0; }
+.subtabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 10px; color: var(--muted); }
+.subtabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tablewrap { overflow-x: auto; margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; }
+td.mono, .mono { font-family: var(--mono); }
+.log { margin-top: 12px; max-height: 280px; overflow: auto; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: 12px/1.5 var(--mono); }
+.log div { white-space: pre-wrap; word-break: break-all; }
+.log .bad { color: var(--bad); } .log .warn { color: var(--warn); } .log .ok { color: var(--ok); }
+.chk { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin: 4px 0 12px; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 10px; }
+.muted { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>GT3 작화 스테이션</h1><span>도면 → 작화 JSON → GT Designer3</span></div>
+  <div class="pills" aria-live="polite">
+    <span class="pill" id="pServer">GT3 연결 서버 확인 전</span>
+    <span class="pill" id="pGt3">GT Designer3 —</span>
+    <span class="pill" id="pKey">연결 키 —</span>
+  </div>
+</header>
+
+<main>
+  <div class="col">
+    <section class="card" aria-labelledby="h1">
+      <h2 id="h1"><span class="step">1</span>이 PC의 GT3 연결 서버</h2>
+      <label class="f">서버 주소 <input type="text" id="server" autocomplete="off" spellcheck="false"></label>
+      <label class="f">연결 키 (시작.bat 창에 나온 값) <input type="password" id="key" autocomplete="off" placeholder="연결 키 붙여 넣기"></label>
+      <div class="row"><button id="btnCheck">연결 확인</button></div>
+      <ul class="list" id="connList" style="margin-top:12px"></ul>
+      <p class="hint">GT Designer3가 깔린 PC에서 <b>시작.bat</b>을 켜 두세요. 이 홈페이지 주소가 그 PC의 <b>허용_주소.txt</b>에 있어야 연결됩니다.</p>
+    </section>
+
+    <section class="card" aria-labelledby="h2">
+      <h2 id="h2"><span class="step">2</span>도면 사진</h2>
+      <div class="drop" id="photoDrop" tabindex="0" role="button" aria-label="도면 사진 넣기">사진을 끌어다 놓거나, 눌러서 고르거나, <b>Ctrl+V</b>로 붙여 넣기</div>
+      <input type="file" id="photoFile" accept="image/*" hidden>
+      <div class="photo" id="photoBox" hidden>
+        <img id="photoImg" alt="올린 도면 사진">
+        <canvas id="photoCanvas" aria-label="패널 영역을 끌어서 지정"></canvas>
+      </div>
+      <div class="row" id="photoTools" hidden style="margin-top:10px">
+        <button id="btnAuto">패널 자동 찾기</button>
+        <button id="btnClearSel">영역 지우기</button>
+      </div>
+      <p class="hint" id="photoHint">사진은 이 브라우저 안에서만 쓰고 어디에도 올리지 않아요. 패널 테두리를 끌어서 지정하면 미리보기에 겹쳐 보여 줍니다.</p>
+    </section>
+
+    <section class="card" aria-labelledby="h3">
+      <h2 id="h3"><span class="step">3</span>작화 JSON</h2>
+      <div class="drop" id="jsonDrop" tabindex="0" role="button" aria-label="작화 JSON 파일 넣기">작화 JSON 파일을 끌어다 놓거나 눌러서 고르기 (여러 개 가능)</div>
+      <input type="file" id="jsonFile" accept=".json,application/json" multiple hidden>
+      <details>
+        <summary>JSON 글을 직접 붙여 넣기</summary>
+        <textarea id="jsonText" placeholder='{"screen_no": 1, "screen_name": "테스트동작", "objects": [...]}'></textarea>
+        <div class="row" style="margin-top:8px"><button id="btnPaste">이 JSON 쓰기</button></div>
+      </details>
+      <div class="row" style="margin-top:12px">
+        <button id="btnPrompt">AI 요청 글 복사</button>
+        <button id="btnSample">예시 불러오기</button>
+      </div>
+      <p class="hint">작화 JSON이 없으면 [AI 요청 글 복사]를 눌러 Claude나 Copilot 채팅에 도면 사진과 함께 붙여 넣으세요. 받은 JSON을 여기에 넣으면 됩니다.</p>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card" aria-labelledby="hp">
+      <h2 id="hp">미리보기</h2>
+      <div class="tabs" id="tabs" role="tablist"></div>
+      <div class="got"><div id="screenHost"></div></div>
+      <div class="tools">
+        <label><input type="checkbox" id="optPhoto" checked> 도면 겹쳐 보기</label>
+        <label>도면 진하기 <input type="range" id="optAlpha" min="0" max="100" value="45" aria-label="도면 진하기"></label>
+        <label><input type="checkbox" id="optDev" checked> 디바이스 표시</label>
+      </div>
+      <div id="checkBox"></div>
+      <div class="subtabs" role="tablist">
+        <button role="tab" id="stObj" aria-selected="true">오브젝트</button>
+        <button role="tab" id="stLab" aria-selected="false">라벨</button>
+        <button role="tab" id="stChk" aria-selected="false">확인할 것</button>
+      </div>
+      <div class="tablewrap" id="detail"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="btnCsv">라벨 CSV 내려받기</button>
+        <button id="btnSave">작화 JSON 내려받기</button>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="h4">
+      <h2 id="h4"><span class="step">4</span>GT3에 만들기</h2>
+      <ul class="list" id="planList"></ul>
+      <label class="chk"><input type="checkbox" id="optClear"> 이미 있는 화면은 기존 오브젝트를 모두 지우고 만들기</label>
+      <button class="primary big" id="btnBuild" disabled>GT3에 만들기</button>
+      <p class="hint">만드는 동안 GT3 PC의 마우스와 키보드를 만지지 마세요. 화면 하나에 2~3분 걸립니다.</p>
+      <div class="log" id="log" aria-live="polite" hidden></div>
+    </section>
+  </div>
+</main>
+
+<script>
+"use strict";
+const SAMPLE = [{"request_id":"","screen_no":1,"screen_name":"테스트동작","mode":"template","d_start":0,"clear_first":false,"objects":[{"type":"rectangle","text":"","x":0.22,"y":0.275,"w":0.34,"h":0.195,"check":false,"round":20,"color":""},{"type":"rectangle","text":"","x":0.614,"y":0.275,"w":0.348,"h":0.195,"check":false,"round":20,"color":""},{"type":"rectangle","text":"","x":0.675,"y":0.544,"w":0.286,"h":0.195,"check":false,"round":20,"color":""},{"type":"rectangle","text":"","x":0.235,"y":0.568,"w":0.404,"h":0.157,"check":false,"round":20,"color":""},{"type":"rectangle","text":"","x":0.238,"y":0.794,"w":0.402,"h":0.157,"check":false,"round":20,"color":""},{"type":"text","text":"테스트동작","x":0.402,"y":0.059,"w":0.192,"h":0.049,"check":false,"font":"함초롬돋움","font_h":0.059,"text_color":""},{"type":"text","text":"비번호:","x":0.049,"y":0.084,"w":0.102,"h":0.038,"check":false,"font":"함초롬돋움","font_h":0.046,"text_color":""},{"type":"text","text":"JOG운전","x":0.338,"y":0.254,"w":0.102,"h":0.035,"check":false,"font":"함초롬돋움","font_h":0.042,"text_color":""},{"type":"text","text":"송출실린더","x":0.711,"y":0.254,"w":0.151,"h":0.038,"check":false,"font":"함초롬돋움","font_h":0.044,"text_color":""},{"type":"text","text":"가공모터","x":0.757,"y":0.526,"w":0.12,"h":0.035,"check":false,"font":"함초롬돋움","font_h":0.044,"text_color":""},{"type":"text","text":"현재위치표시","x":0.317,"y":0.554,"w":0.182,"h":0.038,"check":false,"font":"함초롬돋움","font_h":0.044,"text_color":""},{"type":"text","text":"JOG속도 설정/표시","x":0.281,"y":0.777,"w":0.263,"h":0.038,"check":false,"font":"함초롬돋움","font_h":0.044,"text_color":""},{"type":"text","text":"(단위)","x":0.565,"y":0.659,"w":0.077,"h":0.035,"check":false,"font":"함초롬돋움","font_h":0.038,"text_color":""},{"type":"text","text":"(단위)","x":0.568,"y":0.878,"w":0.077,"h":0.035,"check":false,"font":"함초롬돋움","font_h":0.038,"text_color":""},{"type":"bit_switch","text":"원점\n복귀","x":0.028,"y":0.307,"w":0.164,"h":0.132,"check":false,"font":"함초롬돋움","font_h":0.05,"text_color":"","device":"M0","action":"momentary","round":0,"color":""},{"type":"bit_switch","text":"상승","x":0.253,"y":0.314,"w":0.118,"h":0.115,"check":false,"font":"함초롬돋움","font_h":0.05,"text_color":"","device":"M1","action":"momentary","round":0,"color":""},{"type":"bit_switch","text":"하강","x":0.414,"y":0.314,"w":0.118,"h":0.115,"check":false,"font":"함초롬돋움","font_h":0.05,"text_color":"","device":"M2","action":"momentary","round":0,"color":""},{"type":"bit_switch","text":"전진","x":0.652,"y":0.314,"w":0.118,"h":0.115,"check":false,"font":"함초롬돋움","font_h":0.05,"text_color":"","device":"M3","action":"momentary","round":0,"color":""},{"type":"bit_switch","text":"후진","x":0.808,"y":0.314,"w":0.118,"h":0.115,"check":false,"font":"함초롬돋움","font_h":0.05,"text_color":"","device":"M4","action":"momentary","round":0,"color":""},{"type":"bit_switch","text":"4초 동작","x":0.716,"y":0.589,"w":0.207,"h":0.115,"check":false,"font":"함초롬돋움","font_h":0.046,"text_color":"","device":"M5","action":"momentary","round":0,"color":""},{"type":"bit_lamp","text":"리프트\n동작중","x":0.028,"y":0.62,"w":0.194,"h":0.259,"check":false,"font":"함초롬돋움","font_h":0.054,"text_color":"","device":"M6","invert":false,"shape":"circle","round":0,"on_color":"","off_color":""},{"type":"number_display","text":"현재위치표시","x":0.253,"y":0.613,"w":0.307,"h":0.094,"check":false,"font":"Outline Gothic","font_h":0.084,"text_color":"","device":"D0","data_type":"Signed BIN32","digits":6,"scale":0.0001,"decimal":1,"unit":"","color":""},{"type":"number_input","text":"JOG속도 설정/표시","x":0.256,"y":0.833,"w":0.307,"h":0.094,"check":false,"font":"Outline Gothic","font_h":0.084,"text_color":"","device":"D5","data_type":"Signed BIN32","digits":6,"scale":0.01,"decimal":2,"unit":"","color":"","min":"","max":""},{"type":"screen_switch","text":"장비시운전\n화면전환","x":0.731,"y":0.787,"w":0.225,"h":0.16,"check":false,"font":"함초롬돋움","font_h":0.052,"text_color":"","target_screen":2,"target_type":"base","round":20,"color":""}],"labels":[{"name":"GOT_원점복귀","device":"M0","type":"Bit","comment":"원점복귀 스위치 (테스트동작)"},{"name":"GOT_상승","device":"M1","type":"Bit","comment":"JOG 상승 스위치 (테스트동작)"},{"name":"GOT_하강","device":"M2","type":"Bit","comment":"JOG 하강 스위치 (테스트동작)"},{"name":"GOT_전진","device":"M3","type":"Bit","comment":"송출실린더 전진 스위치 (테스트동작)"},{"name":"GOT_후진","device":"M4","type":"Bit","comment":"송출실린더 후진 스위치 (테스트동작)"},{"name":"GOT_4초동작","device":"M5","type":"Bit","comment":"가공모터 4초 동작 스위치 (테스트동작)"},{"name":"GOT_리프트동작중","device":"M6","type":"Bit","comment":"리프트 동작중 램프 (테스트동작)"},{"name":"GOT_현재위치표시","device":"D0","type":"Double Word","comment":"현재위치 숫자 표시 (테스트동작)"},{"name":"GOT_JOG속도설정","device":"D5","type":"Double Word","comment":"JOG속도 설정/표시 숫자 입력 (테스트동작)"}],"new_screens":[],"check_list":["[전체] 제어 요소, 동작 및 표시 상태, 부가 조건이 없어 그림만 보고 작화함","[전체] 기존 배정 목록이 없어 다른 화면과 번호가 겹칠 수 있음","[현재위치표시] 소수 자릿수 1은 GT Designer3에서 직접 설정","[JOG속도 설정/표시] 소수 자릿수 2는 GT Designer3에서 직접 설정","[현재위치표시] 배율·입력 범위·색은 GT Designer3에서 직접 설정","[JOG속도 설정/표시] 배율·입력 범위·색은 GT Designer3에서 직접 설정","[(단위)] 도면에 적힌 글자 그대로 둠 — mm, um 등으로 바꾸려면 GT3에서 고치기"]},{"request_id":"","screen_no":2,"screen_name":"장비시운전","mode":"template","d_start":10,"clear_first":false,"objects":[{"type":"rectangle","text":"","x":0.531,"y":0.185,"w":0.415,"h":0.244,"check":false,"round":20,"color":""},{"type":"rectangle","text":"","x":0.041,"y":0.498,"w":0.431,"h":0.279,"check":false,"round":20,"color":""},{"type":"rectangle","text":"","x":0.518,"y":0.498,"w":0.428,"h":0.279,"check":false,"round":20,"color":""},{"type":"text","text":"장비시운전","x":0.405,"y":0.066,"w":0.192,"h":0.045,"check":false,"font":"함초롬돋움","font_h":0.059,"text_color":""},{"type":"text","text":"비번호:","x":0.046,"y":0.063,"w":0.09,"h":0.038,"check":false,"font":"함초롬돋움","font_h":0.046,"text_color":""},{"type":"text","text":"동작램프","x":0.677,"y":0.167,"w":0.121,"h":0.038,"check":false,"font":"함초롬돋움","font_h":0.044,"text_color":""},{"type":"text","text":"공정시간","x":0.195,"y":0.484,"w":0.118,"h":0.035,"check":false,"font":"함초롬돋움","font_h":0.044,"text_color":""},{"type":"text","text":"메시지 표시","x":0.654,"y":0.488,"w":0.167,"h":0.035,"check":false,"font":"함초롬돋움","font_h":0.044,"text_color":""},{"type":"text","text":"공정시간","x":0.09,"y":0.627,"w":0.121,"h":0.038,"check":false,"font":"함초롬돋움","font_h":0.046,"text_color":""},{"type":"text","text":"sec","x":0.39,"y":0.631,"w":0.049,"h":0.035,"check":false,"font":"함초롬돋움","font_h":0.038,"text_color":""},{"type":"bit_switch","text":"단속","x":0.041,"y":0.164,"w":0.182,"h":0.115,"check":false,"font":"함초롬돋움","font_h":0.05,"text_color":"","device":"M7","action":"momentary","round":0,"color":""},{"type":"bit_switch","text":"연속","x":0.041,"y":0.317,"w":0.182,"h":0.115,"check":false,"font":"함초롬돋움","font_h":0.05,"text_color":"","device":"M8","action":"momentary","round":0,"color":""},{"type":"bit_switch","text":"일시정지","x":0.31,"y":0.247,"w":0.182,"h":0.115,"check":false,"font":"함초롬돋움","font_h":0.054,"text_color":"","device":"M9","action":"alternate","round":0,"color":""},{"type":"bit_lamp","text":"금속","x":0.603,"y":0.237,"w":0.105,"h":0.14,"check":false,"font":"함초롬돋움","font_h":0.033,"text_color":"","device":"M10","invert":false,"shape":"circle","round":0,"on_color":"","off_color":""},{"type":"bit_lamp","text":"비금속","x":0.777,"y":0.237,"w":0.105,"h":0.14,"check":false,"font":"함초롬돋움","font_h":0.033,"text_color":"","device":"M11","invert":false,"shape":"circle","round":0,"on_color":"","off_color":""},{"type":"number_display","text":"공정시간","x":0.244,"y":0.589,"w":0.126,"h":0.111,"check":false,"font":"Outline Gothic","font_h":0.075,"text_color":"","device":"D10","data_type":"Signed BIN32","digits":1,"scale":1,"decimal":0,"unit":"","color":""},{"type":"text_display","text":"메시지 표시","x":0.579,"y":0.575,"w":0.305,"h":0.139,"check":true,"font":"Outline Gothic","font_h":0.05,"text_color":"","device":"D15","char_code":"KS","digits":10,"color":""},{"type":"screen_switch","text":"테스트동작\n화면전환","x":0.046,"y":0.805,"w":0.226,"h":0.157,"check":false,"font":"함초롬돋움","font_h":0.052,"text_color":"","target_screen":1,"target_type":"base","round":20,"color":""}],"labels":[{"name":"GOT_단속","device":"M7","type":"Bit","comment":"단속 스위치 (장비시운전)"},{"name":"GOT_연속","device":"M8","type":"Bit","comment":"연속 스위치 (장비시운전)"},{"name":"GOT_일시정지","device":"M9","type":"Bit","comment":"일시정지 스위치 alternate (장비시운전)"},{"name":"GOT_금속램프","device":"M10","type":"Bit","comment":"동작램프 금속 (장비시운전)"},{"name":"GOT_비금속램프","device":"M11","type":"Bit","comment":"동작램프 비금속 (장비시운전)"},{"name":"GOT_공정시간","device":"D10","type":"Double Word","comment":"공정시간 숫자 표시 sec (장비시운전)"},{"name":"GOT_메시지표시","device":"D15","type":"Word","comment":"메시지 문자 표시 (장비시운전)"}],"new_screens":[],"check_list":["[전체] 제어 요소, 동작 및 표시 상태, 부가 조건이 없어 그림만 보고 작화함","[공정시간] 칸에 0이 하나라 자릿수 1로 만듦 — 공정시간이 10초를 넘으면 GT3에서 자릿수를 늘리기","[메시지 표시] 문자 표시 10자리(한글 5자)로 만듦 — 메시지가 더 길면 GT3에서 자릿수를 늘리기"]}];
+const KINDS = ["rectangle", "text", "bit_switch", "screen_switch", "bit_lamp", "number_display", "number_input", "text_display", "text_input"];
+const BIT = ["bit_switch", "bit_lamp"], DK = ["number_display", "number_input", "text_display", "text_input"];
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const store = { get(k, d) { try { const v = localStorage.getItem("gt3st." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+                set(k, v) { try { localStorage.setItem("gt3st." + k, JSON.stringify(v)); } catch {} } };
+
+const st = { drawings: [], cur: 0, photo: null, sels: {}, busy: false, conn: null, sub: "obj" };
+$("#server").value = store.get("server", "https://127.0.0.1:8765");
+$("#key").value = store.get("key", "");
+
+/* ---------- 1. 서버 ---------- */
+function server() { return $("#server").value.trim().replace(/\/+$/, ""); }
+async function api(path, opt = {}) {
+  const headers = Object.assign({}, opt.headers || {}, { "X-GT3-Key": $("#key").value.trim() });
+  let r;
+  try { r = await fetch(server() + path, Object.assign({ cache: "no-store" }, opt, { headers })); }
+  catch (e) { const err = new Error("GT3 연결 서버에 닿지 못했어요. 시작.bat이 켜져 있는지, 인증서를 등록했는지, 이 홈페이지 주소가 허용_주소.txt에 있는지 확인하세요."); err.net = true; throw err; }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.error || "서버 오류 (HTTP " + r.status + ")"); e.body = j; e.status = r.status; throw e; }
+  return j;
+}
+function pill(id, cls, text) { const p = $(id); p.className = "pill " + (cls || ""); p.textContent = text; }
+async function check() {
+  store.set("server", server()); store.set("key", $("#key").value.trim());
+  const li = [];
+  try {
+    const s = await api("/status");
+    st.conn = s;
+    pill("#pServer", "ok", "GT3 연결 서버 켜짐");
+    if (!s.installed) { pill("#pGt3", "bad", "GT Designer3 없음"); li.push(["GT Designer3", "깔려있지 않습니다"]); }
+    else pill("#pGt3", s.gt3 && s.gt3.running ? "ok" : "warn", s.gt3 && s.gt3.running ? "GT Designer3 켜짐" : "GT Designer3 꺼짐");
+    pill("#pKey", s.key_ok ? "ok" : "bad", s.key_ok ? "연결 키 맞음" : "연결 키 " + ($("#key").value.trim() ? "틀림" : "없음"));
+    li.push(["서버", "켜짐" + (s.busy ? " · " + (s.busy_message || "만드는 중") : "")]);
+    if (s.gt3 && s.gt3.title) li.push(["GT3 창", s.gt3.title]);
+    if (s.key_ok && s.installed) {
+      try { const sc = await api("/screens"); st.screens = sc.screens || []; li.push(["Base 화면", st.screens.join(", ") || "없음"]); } catch (e) { li.push(["Base 화면", e.message]); }
+    }
+  } catch (e) {
+    st.conn = null;
+    pill("#pServer", "bad", "GT3 연결 서버 없음"); pill("#pGt3", "", "GT Designer3 —"); pill("#pKey", "", "연결 키 —");
+    li.push(["연결", e.message]);
+  }
+  $("#connList").innerHTML = li.map(([a, b]) => "<li><span>" + esc(a) + "</span><span>" + esc(b) + "</span></li>").join("");
+  renderPlan();
+}
+$("#btnCheck").onclick = check;
+$("#key").addEventListener("change", check);
+
+/* ---------- 2. 사진 ---------- */
+const photoImg = $("#photoImg"), cvs = $("#photoCanvas");
+function loadPhoto(file) {
+  if (!file || !/^image\//.test(file.type)) return;
+  const rd = new FileReader();
+  rd.onload = () => { st.photo = rd.result; st.sels = {}; photoImg.onload = () => { $("#photoBox").hidden = false; $("#photoTools").hidden = false; drawSel(); autoFind(true); render(); }; photoImg.src = st.photo; };
+  rd.readAsDataURL(file);
+}
+const pd = $("#photoDrop");
+pd.onclick = () => $("#photoFile").click();
+pd.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#photoFile").click(); } };
+$("#photoFile").onchange = (e) => loadPhoto(e.target.files[0]);
+["dragover", "dragenter"].forEach((t) => pd.addEventListener(t, (e) => { e.preventDefault(); pd.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => pd.addEventListener(t, () => pd.classList.remove("over")));
+pd.addEventListener("drop", (e) => { e.preventDefault(); loadPhoto(e.dataTransfer.files[0]); });
+document.addEventListener("paste", (e) => {
+  if (e.target.closest && e.target.closest("textarea, input")) return;
+  const it = [...(e.clipboardData ? e.clipboardData.items : [])].find((i) => i.type.startsWith("image/"));
+  if (it) { e.preventDefault(); loadPhoto(it.getAsFile()); }
+});
+function selKey() { const d = st.drawings[st.cur]; return d ? String(d.screen_no) : "_"; }
+function drawSel() {
+  [...$("#photoBox").querySelectorAll(".sel")].forEach((n) => n.remove());
+  if (!photoImg.naturalWidth) return;
+  const W = photoImg.naturalWidth, H = photoImg.naturalHeight;
+  Object.entries(st.sels).forEach(([k, r]) => {
+    const d = document.createElement("div"); d.className = "sel";
+    Object.assign(d.style, { left: r.x / W * 100 + "%", top: r.y / H * 100 + "%", width: r.w / W * 100 + "%", height: r.h / H * 100 + "%",
+      opacity: k === selKey() ? 1 : .45 });
+    const dn = st.drawings.find((x) => String(x.screen_no) === k);
+    d.innerHTML = "<b>B-" + esc(k) + (dn && dn.screen_name ? " " + esc(dn.screen_name) : "") + "</b>";
+    $("#photoBox").appendChild(d);
+  });
+}
+let drag = null;
+cvs.addEventListener("pointerdown", (e) => {
+  if (!photoImg.naturalWidth) return;
+  const b = cvs.getBoundingClientRect(), sx = photoImg.naturalWidth / b.width, sy = photoImg.naturalHeight / b.height;
+  drag = { b, sx, sy, x0: (e.clientX - b.left) * sx, y0: (e.clientY - b.top) * sy }; cvs.setPointerCapture(e.pointerId);
+});
+cvs.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const x = (e.clientX - drag.b.left) * drag.sx, y = (e.clientY - drag.b.top) * drag.sy;
+  st.sels[selKey()] = { x: Math.min(x, drag.x0), y: Math.min(y, drag.y0), w: Math.abs(x - drag.x0), h: Math.abs(y - drag.y0) };
+  drawSel();
+});
+cvs.addEventListener("pointerup", () => { if (!drag) return; drag = null; const r = st.sels[selKey()]; if (r && (r.w < 20 || r.h < 20)) delete st.sels[selKey()]; drawSel(); render(); });
+$("#btnClearSel").onclick = () => { delete st.sels[selKey()]; drawSel(); render(); };
+$("#btnAuto").onclick = () => autoFind(false);
+
+/* 사진에서 긴 가로선(패널 위·아래 테두리)을 찾아 위에서부터 둘씩 짝지어 패널로 본다 */
+function autoFind(quiet) {
+  if (!photoImg.naturalWidth) return;
+  const W = photoImg.naturalWidth, H = photoImg.naturalHeight, c = document.createElement("canvas");
+  c.width = W; c.height = H; const g = c.getContext("2d"); g.drawImage(photoImg, 0, 0);
+  let data; try { data = g.getImageData(0, 0, W, H).data; } catch { return; }
+  const dark = (x, y) => { const i = (y * W + x) * 4; return data[i] * .3 + data[i + 1] * .59 + data[i + 2] * .11 < 128; };
+  const lines = [];
+  for (let y = 0; y < H; y++) {
+    let best = 0, run = 0, s = 0, bs = 0;
+    for (let x = 0; x < W; x++) { if (dark(x, y)) { if (!run) s = x; run++; if (run > best) { best = run; bs = s; } } else run = 0; }
+    if (best > W * .35) { const last = lines[lines.length - 1]; if (last && y - last.y2 <= 2) { last.y2 = y; } else lines.push({ y1: y, y2: y, x1: bs, x2: bs + best }); }
+  }
+  const panels = [];
+  for (let i = 0; i + 1 < lines.length; i += 2) {
+    const a = lines[i], b = lines[i + 1];
+    if (b.y1 - a.y2 < H * .08) { i--; continue; }
+    panels.push({ x: Math.min(a.x1, b.x1), y: a.y1, w: Math.max(a.x2, b.x2) - Math.min(a.x1, b.x1), h: b.y2 - a.y1 });
+  }
+  if (!panels.length) { if (!quiet) $("#photoHint").textContent = "패널 테두리를 찾지 못했어요. 사진 위에서 패널을 끌어서 직접 지정하세요."; return; }
+  const nos = st.drawings.length ? st.drawings.map((d) => String(d.screen_no)) : ["_"];
+  panels.forEach((p, i) => { if (nos[i]) st.sels[nos[i]] = p; });
+  $("#photoHint").textContent = "패널 " + panels.length + "개를 찾았어요" + (st.drawings.length ? " (위에서부터 " + nos.slice(0, panels.length).map((n) => "B-" + n).join(", ") + ")" : "") + ". 어긋나면 사진 위에서 끌어서 다시 지정하세요.";
+  drawSel(); render();
+}
+
+/* ---------- 3. JSON ---------- */
+function addJsonText(text, from) {
+  let v; try { v = JSON.parse(text); } catch (e) { return toast("JSON을 읽지 못했어요 (" + from + "): " + e.message, "bad"); }
+  const list = Array.isArray(v) ? v : v && Array.isArray(v.drawings) ? v.drawings : [v];
+  let n = 0;
+  list.forEach((d) => {
+    if (!d || typeof d !== "object" || !Array.isArray(d.objects)) return;
+    const i = st.drawings.findIndex((x) => String(x.screen_no) === String(d.screen_no));
+    if (i >= 0) st.drawings[i] = d; else st.drawings.push(d);
+    n++;
+  });
+  if (!n) return toast("작화 JSON이 아니에요 (" + from + "): screen_no와 objects가 있어야 합니다.", "bad");
+  st.drawings.sort((a, b) => Number(a.screen_no) - Number(b.screen_no));
+  const first = list.filter((d) => d && Array.isArray(d.objects)).map((d) => Number(d.screen_no)).sort((a, b) => a - b)[0];
+  st.cur = Math.max(0, st.drawings.findIndex((x) => Number(x.screen_no) === first));   // 이번에 넣은 것 중 번호가 가장 작은 화면을 보여 준다
+  if (st.photo && Object.keys(st.sels).length <= 1) { st.sels = {}; autoFind(true); }
+  render();
+}
+const jd = $("#jsonDrop");
+jd.onclick = () => $("#jsonFile").click();
+jd.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#jsonFile").click(); } };
+$("#jsonFile").onchange = (e) => readJsonFiles(e.target.files);
+["dragover", "dragenter"].forEach((t) => jd.addEventListener(t, (e) => { e.preventDefault(); jd.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => jd.addEventListener(t, () => jd.classList.remove("over")));
+jd.addEventListener("drop", (e) => { e.preventDefault(); readJsonFiles(e.dataTransfer.files); });
+function readJsonFiles(files) {   // 여러 파일을 다 읽은 뒤 한 번에 넣어서, 번호가 가장 작은 화면이 보이게 한다
+  Promise.all([...files].map((f) => f.text().then((t) => [t, f.name]))).then((all) => {
+    const ok = [];
+    all.forEach(([t, name]) => { try { const v = JSON.parse(t); (Array.isArray(v) ? v : v && Array.isArray(v.drawings) ? v.drawings : [v]).forEach((d) => ok.push(d)); } catch (e) { toast("JSON을 읽지 못했어요 (" + name + "): " + e.message, "bad"); } });
+    if (ok.length) addJsonText(JSON.stringify({ drawings: ok }), all.map((a) => a[1]).join(", "));
+  });
+}
+$("#btnPaste").onclick = () => addJsonText($("#jsonText").value, "붙여 넣은 글");
+$("#btnSample").onclick = () => { if (SAMPLE) { addJsonText(JSON.stringify({ drawings: SAMPLE }), "예시"); toast("예시 작화 JSON(테스트동작, 장비시운전)을 불러왔어요. 진짜 도면이 아니라 연습용 예시예요.", "warn"); } };
+
+const PROMPT = `첨부한 패널 도면 사진으로 GT Designer3 작화 JSON을 만들어 줘. 설명 없이 JSON만 답해 줘.
+- 도면에 패널(터치패널 화면)이 여러 개면 패널마다 하나씩 만들고 {"drawings": [ ... ]}로 묶어 줘.
+- 화면 번호는 "터치패널 화면 N"의 N, 화면 이름은 ':' 뒤에서 '화면'을 뗀 것.
+- 칸: screen_no, screen_name, mode("template"), d_start, clear_first(false), objects, labels, new_screens([]), check_list
+- objects의 type: rectangle(테두리, 맨 앞), text(고정 글자), bit_switch(버튼), screen_switch('~화면전환' 버튼, target_screen), bit_lamp(램프, shape "circle"이면 h = w×800÷600), number_display/number_input(888 칸, digits는 8·0 개수), text_display/text_input(빈 글자 칸)
+- x, y, w, h는 패널 테두리 기준 0~1 비율(소수 3자리), font_h는 보이는 글자 높이÷패널 높이×1.2
+- 디바이스: 스위치·램프는 M(M0부터 1씩), 숫자·문자 칸은 D(d_start부터 5씩, rectangle을 뺀 objects에서 처음 나오는 종류 순서대로 같은 종류끼리 묶어서). X, Y, U는 쓰지 않는다.
+- 정지·일시정지만 action "alternate", 나머지 버튼은 "momentary". 두 줄 글자는 \\n으로.
+- labels: [{"device":"M0","name":"GOT_전진","type":"Bit","comment":"전진 스위치 (테스트동작)"}] (숫자 D는 "Double Word", 문자 D는 "Word")
+- PLC 래더(MOV, 자기유지 등)는 만들지 않는다. 확실하지 않은 것은 check를 true로 하고 check_list에 적는다.`;
+$("#btnPrompt").onclick = async () => {
+  try { await navigator.clipboard.writeText(PROMPT); toast("AI 요청 글을 복사했어요. Claude나 Copilot 채팅에 도면 사진과 함께 붙여 넣으세요.", "ok"); }
+  catch { $("#jsonText").value = PROMPT; $("#jsonText").closest("details").open = true; $("#jsonText").select(); toast("복사가 막혀서 아래 칸에 넣었어요. Ctrl+C로 복사하세요. (복사한 뒤 이 칸은 비워 주세요)", "warn"); }
+};
+
+/* ---------- 검사 (서버 gt3_rules.py와 같은 핵심 규칙. 최종 검사는 서버가 다시 한다) ---------- */
+const num = (v) => typeof v === "number" && isFinite(v);
+function check1(d) {
+  const e = [];
+  const no = Number(d.screen_no);
+  if (!Number.isInteger(no) || no < 1 || no > 32767) e.push("screen_no가 1 이상의 정수가 아님 (" + d.screen_no + ")");
+  else if (no === 99) e.push("99번은 템플릿 화면이라 작화할 수 없음");
+  if ("d_start" in d && !(Number.isInteger(d.d_start) && d.d_start >= 0 && d.d_start % 5 === 0)) e.push("d_start는 0 이상인 5의 배수여야 함");
+  if (!d.objects.length) e.push("objects가 비어 있음");
+  if (d.objects.length > 200) e.push("오브젝트가 너무 많음 (최대 200개)");
+  let other = false; const used = {};
+  d.objects.forEach((o, i) => {
+    const n = (i + 1) + "번 " + (o && o.type) + " '" + String((o && o.text) || "").replace(/\n/g, " ") + "'";
+    if (!o || KINDS.indexOf(o.type) < 0) return e.push(n + ": 모르는 종류");
+    if (o.type !== "rectangle") other = true; else if (other) e.push(n + ": rectangle은 objects 맨 앞에 있어야 함");
+    let bad = false;
+    ["x", "y", "w", "h"].forEach((k) => { if (!num(o[k]) || o[k] < 0 || o[k] > 1) { bad = true; e.push(n + ": " + k + "가 0~1이 아님 (" + o[k] + ")"); } });
+    if (!bad && (o.x + o.w > 1.001 || o.y + o.h > 1.001)) e.push(n + ": 화면 밖으로 나감");
+    if (!bad && (o.w <= 0 || o.h <= 0)) e.push(n + ": 너비나 높이가 0");
+    if (o.font_h !== undefined && o.font_h !== "" && (!num(o.font_h) || o.font_h <= 0 || o.font_h > .5)) e.push(n + ": font_h가 0~0.5가 아님");
+    const dev = String(o.device || "").trim();
+    if (/^(X|Y|U)/i.test(dev)) e.push(n + ": " + dev + "는 쓸 수 없음 (M 또는 D만)");
+    else if (dev && !/^[MD]\d{1,5}$/.test(dev)) e.push(n + ": 디바이스 형식이 틀림 (" + dev + ")");
+    else if (BIT.includes(o.type) && dev && dev[0] !== "M") e.push(n + ": 스위치·램프는 M이어야 함");
+    else if (DK.includes(o.type) && dev && dev[0] !== "D") e.push(n + ": 숫자·문자 칸은 D여야 함");
+    if ((BIT.includes(o.type) || DK.includes(o.type)) && !dev) e.push(n + ": device가 없음");
+    if (o.type === "bit_switch") { const t = String(o.text || "").replace(/\s/g, ""), want = t === "정지" || t === "일시정지" ? "alternate" : "momentary"; if (o.action && o.action !== want) e.push(n + ": action은 " + want + "이어야 함"); }
+    if (o.type === "bit_lamp" && o.shape === "circle" && num(o.w) && num(o.h) && Math.abs(o.h - o.w * 800 / 600) > .003) e.push(n + ": 원형 램프는 h = w × 800 ÷ 600");
+    if (o.type === "screen_switch" && Number(o.target_screen) === 99) e.push(n + ": 99번 템플릿 화면으로 갈 수 없음");
+    if (dev[0] === "M") { if (used[dev] && !(o.type === "bit_lamp" || used[dev] === "bit_lamp")) e.push(n + ": " + dev + "가 다른 오브젝트와 겹침"); used[dev] = o.type; }
+  });
+  (d.check_list || []).forEach((c) => { if (/(^|[^A-Za-z])D?MOVP?([^A-Za-z]|$)|자기유지|래더/.test(c)) e.push("check_list에 PLC 할 일이 있음: " + c); });
+  return e;
+}
+/* GT3 자동 배치 프로그램이 실제로 붙일 D 번호 (gt3_rules.expected_d와 같은 계산) */
+function dPlan(d) {
+  const objs = d.objects.map((o, i) => ({ o, i: i + 1 })).filter((x) => x.o);
+  const sorted = objs.filter((x) => x.o.type === "rectangle").concat(objs.filter((x) => x.o.type !== "rectangle"));
+  const order = []; sorted.forEach((x) => { if (order.indexOf(x.o.type) < 0) order.push(x.o.type); });
+  const placed = (d.mode || "template") === "template" ? order.reduce((a, k) => a.concat(sorted.filter((x) => x.o.type === k)), []) : sorted;
+  let n = Number.isInteger(Number(d.d_start)) && Number(d.d_start) >= 0 ? Number(d.d_start) : 0;
+  const moved = [], map = {};
+  placed.forEach((x) => { if (!DK.includes(x.o.type)) return; const want = "D" + n; n += 5; const now = String(x.o.device || "").trim();
+    if (now !== want) { moved.push(x.i + "번 '" + String(x.o.text || "").replace(/\n/g, " ") + "' " + (now || "(없음)") + " → " + want); if (now) map[now] = want; } });
+  return { moved, map };
+}
+function manual(d) {
+  const out = [];
+  d.objects.forEach((o) => {
+    if (!o) return; const m = [];
+    if ((o.type === "number_display" || o.type === "number_input")) { if (o.scale !== undefined && o.scale !== "" && Number(o.scale) !== 1) m.push("배율 " + o.scale); if (o.decimal) m.push("소수 " + o.decimal + "자리"); }
+    if (o.type === "number_input" && (o.min || o.max)) m.push("입력 범위 " + (o.min || "") + "~" + (o.max || ""));
+    if (o.color || o.text_color) m.push("색");
+    if (m.length) out.push("'" + String(o.text || "").replace(/\n/g, " ") + "': " + m.join(", "));
+  });
+  return out;
+}
+
+/* ---------- 미리보기 ---------- */
+function svgFor(d) {
+  const W = 800, H = 600, P = (o) => [o.x * W, o.y * H, o.w * W, o.h * H];
+  const errs = check1(d), bad = new Set(); errs.forEach((x) => { const m = /^(\d+)번/.exec(x); if (m) bad.add(+m[1] - 1); });
+  const lines = (t, x, y, fs, col, anchor) => { const ls = String(t || "").split("\n"), lh = fs * 1.15, top = y - (ls.length - 1) * lh / 2;
+    return ls.map((l, i) => '<text x="' + x + '" y="' + (top + i * lh) + '" font-size="' + fs + '" fill="' + col + '" text-anchor="' + (anchor || "middle") + '" dominant-baseline="central">' + esc(l) + "</text>").join(""); };
+  let photo = "";
+  const sel = st.sels[String(d.screen_no)];
+  if (st.photo && sel && $("#optPhoto").checked) {
+    const sx = W / sel.w, sy = H / sel.h, a = $("#optAlpha").value / 100;
+    photo = '<image href="' + st.photo + '" x="' + (-sel.x * sx) + '" y="' + (-sel.y * sy) + '" width="' + (photoImg.naturalWidth * sx) + '" height="' + (photoImg.naturalHeight * sy) + '" preserveAspectRatio="none" opacity="' + a + '" clip-path="url(#clip)"/>';
+  }
+  const showDev = $("#optDev").checked;
+  const objs = d.objects.map((o, i) => {
+    if (!o || !num(o.x)) return "";
+    const [x, y, w, h] = P(o), fs = Math.max(8, (num(o.font_h) ? o.font_h : .04) * H), cx = x + w / 2, cy = y + h / 2;
+    let s = "";
+    if (o.type === "rectangle") s = '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (o.round ? 12 : 0) + '" fill="none" stroke="#e8edf2" stroke-width="2"/>';
+    else if (o.type === "bit_switch" || o.type === "screen_switch") s = '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (o.round ? 8 : 2) + '" fill="#2f5ba8" fill-opacity=".88" stroke="#a9bfe6"/>' + lines(o.text, cx, cy, fs, "#fff");
+    else if (o.type === "bit_lamp") s = '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + w / 2 + '" ry="' + h / 2 + '" fill="#7a2a2e" fill-opacity=".9" stroke="#c9ced4" stroke-width="2"/>' + lines(o.text, cx, cy, fs, "#fff");
+    else if (o.type === "number_display" || o.type === "number_input") s = '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="#000" stroke="' + (o.type === "number_input" ? "#f1b74a" : "#3fae5a") + '" stroke-width="1.5"/>' + lines("8".repeat(Math.max(1, Math.min(12, Number(o.digits) || 6))), x + w - 6, cy, Math.min(fs, h * .85), "#d8f5df", "end");
+    else if (o.type === "text_display" || o.type === "text_input") s = '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="#000" stroke="' + (o.type === "text_input" ? "#f1b74a" : "#3fae5a") + '" stroke-width="1.5" stroke-dasharray="4 3"/>' + lines("ABC", x + 8, cy, Math.min(fs, h * .7), "#9fdcb0", "start");
+    else s = lines(o.text, cx, cy, fs, o.text_color || "#ffffff");
+    const dev = showDev && o.device ? '<text x="' + (x + 2) + '" y="' + (y - 4) + '" font-size="11" fill="#7fd1ff" font-family="JetBrains Mono, monospace">' + esc(o.device) + "</text>" : "";
+    const warn = bad.has(i) ? "#ff5a4d" : o.check ? "#f5c518" : "";
+    const box = warn ? '<rect x="' + (x - 3) + '" y="' + (y - 3) + '" width="' + (w + 6) + '" height="' + (h + 6) + '" fill="none" stroke="' + warn + '" stroke-width="2" stroke-dasharray="6 3"/>' : "";
+    return '<g><title>' + esc((i + 1) + ". " + o.type + " " + String(o.text || "").replace(/\n/g, " ") + (o.device ? " · " + o.device : "")) + "</title>" + s + dev + box + "</g>";
+  }).join("");
+  return '<svg viewBox="0 0 800 600" role="img" aria-label="Base ' + esc(d.screen_no) + '번 미리보기" font-family="IBM Plex Sans KR, Malgun Gothic, sans-serif"><defs><clipPath id="clip"><rect width="800" height="600"/></clipPath></defs>' + photo + objs + "</svg>";
+}
+function render() {
+  const tabs = $("#tabs");
+  tabs.innerHTML = st.drawings.map((d, i) => '<button class="tab" role="tab" aria-selected="' + (i === st.cur) + '" data-i="' + i + '">B-' + esc(d.screen_no) + " " + esc(d.screen_name || "") + "<small>" + d.objects.length + "</small></button>").join("");
+  tabs.querySelectorAll(".tab").forEach((b) => b.onclick = () => { st.cur = +b.dataset.i; drawSel(); render(); });
+  const d = st.drawings[st.cur];
+  if (!d) {
+    $("#screenHost").innerHTML = '<div class="empty"><b>작화 JSON을 넣으면 여기에 GOT 화면이 나와요</b><span>3번 칸에 파일을 넣거나 [예시 불러오기]를 눌러 보세요</span></div>';
+    $("#checkBox").innerHTML = ""; $("#detail").innerHTML = ""; renderPlan(); return;
+  }
+  $("#screenHost").innerHTML = svgFor(d);
+  const errs = check1(d), dp = dPlan(d), man = manual(d);
+  let h = errs.length ? '<div class="box bad"><b>검사 오류 ' + errs.length + "개 — 고치기 전에는 만들 수 없어요</b><ul>" + errs.map((e) => "<li>" + esc(e) + "</li>").join("") + "</ul></div>" : '<div class="box ok"><b>검사 통과</b> · 오브젝트 ' + d.objects.length + "개</div>";
+  if (dp.moved.length) h += '<div class="box warn"><b>알림 (만들기는 됩니다)</b> D 번호가 자동 배치 순서와 달라요. GT3에는 이 번호로 들어가요<ul>' + dp.moved.map((m) => "<li>" + esc(m) + "</li>").join("") + "</ul></div>";
+  if (man.length) h += '<div class="box warn"><b>GT3에서 직접 넣을 것</b><ul>' + man.map((m) => "<li>" + esc(m) + "</li>").join("") + "</ul></div>";
+  $("#checkBox").innerHTML = h;
+  renderDetail(d); renderPlan();
+}
+function renderDetail(d) {
+  ["obj", "lab", "chk"].forEach((k) => $("#st" + k[0].toUpperCase() + k.slice(1)).setAttribute("aria-selected", String(st.sub === k)));
+  let h = "";
+  if (st.sub === "obj") h = "<table><tr><th>#</th><th>종류</th><th>글자</th><th>디바이스</th><th>x</th><th>y</th><th>w</th><th>h</th></tr>" + d.objects.map((o, i) => "<tr><td>" + (i + 1) + "</td><td>" + esc(o.type) + "</td><td>" + esc(String(o.text || "").replace(/\n/g, " ")) + '</td><td class="mono">' + esc(o.device || (o.target_screen ? "→ B-" + o.target_screen : "")) + '</td><td class="mono">' + o.x + '</td><td class="mono">' + o.y + '</td><td class="mono">' + o.w + '</td><td class="mono">' + o.h + "</td></tr>").join("") + "</table>";
+  if (st.sub === "lab") h = (d.labels || []).length ? "<table><tr><th>디바이스</th><th>라벨명</th><th>데이터형</th><th>설명</th></tr>" + d.labels.map((l) => '<tr><td class="mono">' + esc(dp(d, l.device)) + "</td><td>" + esc(l.name) + "</td><td>" + esc(l.type) + "</td><td>" + esc(l.comment) + "</td></tr>").join("") + "</table>" : '<p class="muted">labels가 없어요.</p>';
+  if (st.sub === "chk") h = (d.check_list || []).length ? '<ul class="list">' + d.check_list.map((c) => "<li><span>" + esc(c) + "</span></li>").join("") + "</ul>" : '<p class="muted">확인할 것이 없어요.</p>';
+  $("#detail").innerHTML = h;
+}
+function dp(d, dev) { return dPlan(d).map[dev] || dev; }   // 라벨 표는 GT3에 실제로 들어갈 D 번호로 보여 준다
+[["#stObj", "obj"], ["#stLab", "lab"], ["#stChk", "chk"]].forEach(([id, k]) => $(id).onclick = () => { st.sub = k; render(); });
+["#optPhoto", "#optAlpha", "#optDev"].forEach((id) => $(id).addEventListener("input", render));
+
+/* ---------- 내려받기 ---------- */
+function download(name, text, type) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+$("#btnCsv").onclick = () => {
+  if (!st.drawings.length) return toast("작화 JSON을 먼저 넣으세요.", "warn");
+  const q = (v) => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+  const rows = [["디바이스", "라벨명", "데이터형", "설명", "화면"]];
+  st.drawings.forEach((d) => (d.labels || []).forEach((l) => rows.push([dp(d, l.device), l.name, l.type, l.comment, "B-" + d.screen_no + " " + (d.screen_name || "")])));
+  download("gt3_labels.csv", "﻿" + rows.map((r) => r.map(q).join(",")).join("\r\n"), "text/csv");
+};
+$("#btnSave").onclick = () => { if (!st.drawings.length) return toast("작화 JSON을 먼저 넣으세요.", "warn"); download("gt3_drawings.json", JSON.stringify({ drawings: st.drawings }, null, 1), "application/json"); };
+
+/* ---------- 4. GT3에 만들기 ---------- */
+function canBuild() { return !st.busy && st.drawings.length && st.drawings.every((d) => !check1(d).length) && st.conn && st.conn.installed && st.conn.key_ok; }
+function renderPlan() {
+  const have = new Set((st.screens || []).map((s) => String(s).split(" ")[0]));
+  $("#planList").innerHTML = st.drawings.length ? st.drawings.map((d) => "<li><span>B-" + esc(d.screen_no) + " " + esc(d.screen_name || "(이름 없음)") + "</span><span>" + (st.screens ? (have.has(String(d.screen_no)) ? "이미 있음" : "새로 만듦") : "") + " · " + d.objects.length + "개</span></li>").join("") : '<li><span class="muted">만들 화면이 없어요</span></li>';
+  const b = $("#btnBuild"); b.disabled = !canBuild();
+  b.textContent = st.busy ? "만드는 중…" : !st.conn ? "먼저 1번에서 연결 확인" : !st.conn.key_ok ? "연결 키를 확인하세요" : !st.conn.installed ? "GT Designer3가 깔려있지 않습니다" : "GT3에 만들기";
+}
+function log(t, cls) { const l = $("#log"); l.hidden = false; const p = document.createElement("div"); if (cls) p.className = cls; p.textContent = t; l.appendChild(p); l.scrollTop = 1e9; }
+function toast(t, cls) { log(t, cls); }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function waitJob(id) {
+  let shown = 0;
+  for (;;) {
+    let j;
+    try { j = await api("/job/" + encodeURIComponent(id)); }
+    catch (e) { if (e.status === 404) throw new Error("작업 기록을 찾지 못했어요 (서버를 다시 켰을 수 있어요). GT3 화면에서 결과를 확인하세요."); await sleep(2500); continue; }
+    const lines = Array.isArray(j.log) ? j.log : [];
+    lines.slice(shown).forEach((l) => log(l, /실패/.test(l) ? "bad" : /건너뜀|이름이 다름|다시 그립니다/.test(l) ? "warn" : ""));
+    shown = lines.length;
+    if (j.state === "done" || j.state === "error") return j;
+    await sleep(1000);
+  }
+}
+$("#btnBuild").onclick = async () => {
+  if (!canBuild()) return;
+  const plan = st.drawings.map((d) => ({ no: Number(d.screen_no), name: String(d.screen_name || "").trim() }));
+  if (plan.some((p) => !p.name)) return toast("screen_name이 없는 화면이 있어요. JSON에 화면 이름을 넣어 주세요.", "bad");
+  const clear = $("#optClear").checked;
+  st.busy = true; renderPlan(); $("#log").innerHTML = "";
+  try {
+    const s = await api("/status");
+    if (s.busy) throw new Error(s.busy_message || "다른 작업이 GT3를 쓰는 중이에요.");
+    if (!s.gt3 || !s.gt3.running) throw new Error("GT Designer3가 꺼져 있어요. 켠 뒤 다시 누르세요.");
+    log("Base 화면 준비: " + plan.map((p) => "B-" + p.no + " " + p.name).join(", "));
+    const pj = await api("/screens/prepare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ screens: plan }) });
+    const pr = await waitJob(pj.job);
+    if (pr.state === "error") throw new Error("화면 준비 오류: " + pr.error);
+    const r = pr.result || {};
+    (r.name_mismatch || []).forEach((m) => log("B-" + m.no + "은 이미 있고 이름이 '" + m.now + "'이에요. 이름은 바꾸지 않았어요.", "warn"));
+    if ((r.failed || []).length) { r.failed.forEach((f) => log("B-" + f.no + " 만들기 실패: " + f.error, "bad")); throw new Error("화면을 준비하지 못해 멈췄어요. GT3에서 그 화면을 직접 만든 뒤 다시 누르세요."); }
+    for (const d0 of st.drawings) {
+      const d = JSON.parse(JSON.stringify(d0)); d.mode = d.mode || "template"; d.clear_first = clear;
+      log("── B-" + d.screen_no + " " + (d.screen_name || "") + " 작화 시작");
+      let start;
+      try { start = await api("/build", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d) }); }
+      catch (e) { ((e.body && e.body.problems) || []).forEach((p) => log("  " + p, "bad")); throw e; }
+      (start.advice || []).forEach((a) => log("  알림: " + a, "warn"));
+      const j = await waitJob(start.job);
+      if (j.state === "error") throw new Error("B-" + d.screen_no + " 오류: " + j.error + " (일부가 이미 만들어졌을 수 있어요)");
+      const res = j.result || {};
+      log("B-" + d.screen_no + " 완료 " + res.done + "/" + res.total + "개" + ((res.failed || []).length ? ", 실패 " + res.failed.length + "개" : "") + (res.stopped_early ? " — 안전을 위해 중간에 멈춤" : ""), (res.failed || []).length || res.stopped_early ? "bad" : "ok");
+      (res.failed || []).forEach((f) => log("  실패 " + f.index + "번 " + f.type + " '" + String(f.text || "").replace(/\n/g, " ") + "': " + f.error, "bad"));
+      if (res.stopped_early) throw new Error("앞 화면이 중간에 멈춰서 남은 화면은 만들지 않았어요.");
+    }
+    log("모든 화면을 만들었어요. GT3에서 Ctrl+S로 저장하세요.", "ok");
+  } catch (e) { log(e.message, "bad"); }
+  finally { st.busy = false; await check(); }
+};
+
+render();
+check();
+</script>
+</body>
+</html>
